@@ -173,7 +173,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Ethereum',
     symbol: 'ETH',
     chainId: 1,
-    rpcUrl: 'https://mainnet.infura.io/v3/YOUR_INFURA_KEY',
+    rpcUrl: process.env.NEXT_PUBLIC_ETHEREUM_RPC || 'https://eth.public-rpc.com',
     explorerUrl: 'https://etherscan.io',
     nativeCurrency: {
       name: 'Ethereum',
@@ -187,7 +187,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'BNB Smart Chain',
     symbol: 'BNB',
     chainId: 56,
-    rpcUrl: 'https://bsc-dataseed1.binance.org',
+    rpcUrl: process.env.NEXT_PUBLIC_BSC_RPC || 'https://bsc-dataseed1.binance.org',
     explorerUrl: 'https://bscscan.com',
     nativeCurrency: {
       name: 'BNB',
@@ -201,7 +201,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Polygon',
     symbol: 'MATIC',
     chainId: 137,
-    rpcUrl: 'https://polygon-rpc.com',
+    rpcUrl: process.env.NEXT_PUBLIC_POLYGON_RPC || 'https://polygon-rpc.com',
     explorerUrl: 'https://polygonscan.com',
     nativeCurrency: {
       name: 'Polygon',
@@ -215,7 +215,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Arbitrum One',
     symbol: 'ETH',
     chainId: 42161,
-    rpcUrl: 'https://arb1.arbitrum.io/rpc',
+    rpcUrl: process.env.NEXT_PUBLIC_ARBITRUM_RPC || 'https://arb1.arbitrum.io/rpc',
     explorerUrl: 'https://arbiscan.io',
     nativeCurrency: {
       name: 'Ethereum',
@@ -229,7 +229,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Optimism',
     symbol: 'ETH',
     chainId: 10,
-    rpcUrl: 'https://mainnet.optimism.io',
+    rpcUrl: process.env.NEXT_PUBLIC_OPTIMISM_RPC || 'https://mainnet.optimism.io',
     explorerUrl: 'https://optimistic.etherscan.io',
     nativeCurrency: {
       name: 'Ethereum',
@@ -243,7 +243,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Avalanche',
     symbol: 'AVAX',
     chainId: 43114,
-    rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
+    rpcUrl: process.env.NEXT_PUBLIC_AVALANCHE_RPC || 'https://api.avax.network/ext/bc/C/rpc',
     explorerUrl: 'https://snowtrace.io',
     nativeCurrency: {
       name: 'Avalanche',
@@ -257,7 +257,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Fantom',
     symbol: 'FTM',
     chainId: 250,
-    rpcUrl: 'https://rpc.ftm.tools',
+    rpcUrl: process.env.NEXT_PUBLIC_FANTOM_RPC || 'https://rpc.ftm.tools',
     explorerUrl: 'https://ftmscan.com',
     nativeCurrency: {
       name: 'Fantom',
@@ -271,7 +271,7 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     name: 'Solana',
     symbol: 'SOL',
     chainId: 101,
-    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com',
     explorerUrl: 'https://explorer.solana.com',
     nativeCurrency: {
       name: 'Solana',
@@ -294,6 +294,38 @@ export const SUPPORTED_CHAINS: ChainConfig = {
     },
     iconUrl: '/chains/bitcoin.png',
   },
+};
+
+// Default tokens for each chain
+export const DEFAULT_TOKENS: Record<string, Token[]> = {
+  ethereum: [
+    {
+      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      chainId: 1,
+      logoURI: 'https://assets.coingecko.com/coins/images/6319/thumb/USD_Coin_icon.png',
+    },
+    {
+      address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      chainId: 1,
+      logoURI: 'https://assets.coingecko.com/coins/images/325/thumb/Tether.png',
+    },
+  ],
+  bsc: [
+    {
+      address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 18,
+      chainId: 56,
+      logoURI: 'https://assets.coingecko.com/coins/images/6319/thumb/USD_Coin_icon.png',
+    },
+  ],
 };
 
 export interface WalletActions {
