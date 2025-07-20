@@ -1,10 +1,10 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
-import ECPairFactory from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 
-const ECPair = ECPairFactory(ecc);
+// Initialize ECPair with ecc
+bitcoin.initEccLib(ecc);
 
 export interface BitcoinWallet {
   address: string;
@@ -39,7 +39,7 @@ export class BitcoinService {
                  "m/84'/0'/0'/0/0"; // Native SegWit
     
     const child = hdkey.derive(path);
-    const keyPair = ECPair.fromPrivateKey(child.privateKey);
+    const keyPair = bitcoin.ECPair.fromPrivateKey(child.privateKey!, { network: this.network });
     
     let address: string;
     
@@ -75,7 +75,7 @@ export class BitcoinService {
     
     return {
       address,
-      privateKey: child.privateKey.toString('hex'),
+      privateKey: child.privateKey!.toString('hex'),
       publicKey: keyPair.publicKey.toString('hex'),
       type
     };
@@ -120,7 +120,7 @@ export class BitcoinService {
     feeRate?: number
   ): Promise<string> {
     try {
-      const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'));
+      const keyPair = bitcoin.ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), { network: this.network });
       
       // Determine address type from private key
       const p2wpkh = bitcoin.payments.p2wpkh({ 
@@ -151,10 +151,6 @@ export class BitcoinService {
       let inputValue = 0;
       for (const utxo of utxos) {
         if (inputValue >= amountSats) break;
-        
-        // Get raw transaction for input
-        const txResponse = await fetch(`${this.apiBaseUrl}/tx/${utxo.txid}/hex`);
-        const txHex = await txResponse.text();
         
         psbt.addInput({
           hash: utxo.txid,
