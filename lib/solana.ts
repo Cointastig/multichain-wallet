@@ -18,7 +18,7 @@ import {
 } from '@solana/spl-token';
 import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
-import * as ed25519 from 'ed25519-hd-key';
+import ed25519 from 'ed25519-hd-key';
 import * as nacl from 'tweetnacl';
 
 export class SolanaService {
