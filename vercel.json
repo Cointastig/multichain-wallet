@@ -5,7 +5,7 @@
   "installCommand": "npm install",
   "regions": ["iad1"],
   "functions": {
-    "app/api/coingecko/route.ts": {
+    "app/api/coingecko/[...path]/route.ts": {
       "maxDuration": 10
     }
   },
@@ -56,7 +56,7 @@
   "rewrites": [
     {
       "source": "/api/coingecko/:path*",
-      "destination": "/api/coingecko"
+      "destination": "/api/coingecko/:path*"
     }
   ]
 }
