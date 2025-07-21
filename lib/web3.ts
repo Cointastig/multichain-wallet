@@ -1,7 +1,6 @@
 import { ethers } from 'ethers';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import * as bitcoin from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
 
@@ -160,7 +159,7 @@ export class SolanaService {
     // Note: This is a simplified implementation
     // In production, use proper Solana key derivation
     const publicKey = solanaChild.publicKey.toString('hex');
-    const privateKey = solanaChild.privateKey.toString('hex');
+    const privateKey = solanaChild.privateKey!.toString('hex');
     
     return {
       publicKey,
@@ -233,89 +232,6 @@ export class SolanaService {
   static async signMessage(privateKey: string, message: string): Promise<string> {
     // Implement Solana message signing
     return 'signed_message_placeholder';
-  }
-}
-
-// Bitcoin service
-export class BitcoinService {
-  static createWalletFromMnemonic(mnemonic: string) {
-    const seed = mnemonicToSeedSync(mnemonic);
-    const hdkey = HDKey.fromMasterSeed(seed);
-    const btcPath = "m/44'/0'/0'/0/0";
-    const btcChild = hdkey.derive(btcPath);
-    
-    const keyPair = bitcoin.ECPair.fromPrivateKey(btcChild.privateKey);
-    const { address } = bitcoin.payments.p2pkh({ 
-      pubkey: keyPair.publicKey,
-      network: bitcoin.networks.bitcoin 
-    });
-    
-    return {
-      address: address!,
-      privateKey: btcChild.privateKey.toString('hex'),
-    };
-  }
-
-  static async getBalance(address: string): Promise<string> {
-    try {
-      // This would typically use a service like BlockCypher or Blockstream API
-      const response = await fetch(`https://blockstream.info/api/address/${address}`);
-      const data = await response.json();
-      
-      const balanceSats = data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum;
-      return (balanceSats / 100000000).toString(); // Convert satoshis to BTC
-    } catch (error) {
-      console.error('Error getting Bitcoin balance:', error);
-      return '0';
-    }
-  }
-
-  static async sendTransaction(
-    privateKey: string,
-    to: string,
-    amount: string
-  ): Promise<string> {
-    try {
-      // This would involve:
-      // 1. Fetching UTXOs for the address
-      // 2. Creating a Bitcoin transaction
-      // 3. Signing the transaction
-      // 4. Broadcasting to the network
-      
-      // Simplified placeholder implementation
-      return 'bitcoin_tx_hash_placeholder';
-    } catch (error) {
-      console.error('Error sending Bitcoin transaction:', error);
-      throw error;
-    }
-  }
-
-  static async estimateGas(to: string, amount: string): Promise<string> {
-    try {
-      // Get current fee rate from mempool.space or similar
-      const response = await fetch('https://mempool.space/api/v1/fees/recommended');
-      const fees = await response.json();
-      
-      // Estimate transaction size (simplified)
-      const txSize = 250; // bytes (approximate for 1 input, 2 outputs)
-      const satPerByte = fees.fastestFee;
-      const totalFee = txSize * satPerByte;
-      
-      return (totalFee / 100000000).toString(); // Convert to BTC
-    } catch (error) {
-      console.error('Error estimating Bitcoin fee:', error);
-      return '0.0001'; // Default fee
-    }
-  }
-
-  static async getTransactionHistory(address: string): Promise<any[]> {
-    try {
-      const response = await fetch(`https://blockstream.info/api/address/${address}/txs`);
-      return await response.json();
-    } catch (error) {
-      console.error('Error getting Bitcoin transaction history:', error);
-      return [];
-    }
   }
 }
 
