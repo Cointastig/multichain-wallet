@@ -3,8 +3,8 @@ import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
 import * as ecc from 'tiny-secp256k1';
 
-// Initialize ECPair with ecc
-bitcoin.initEccLib(ecc);
+// Create ECPair factory
+const ECPair = bitcoin.ECPairFactory(ecc);
 
 export interface BitcoinWallet {
   address: string;
@@ -39,7 +39,7 @@ export class BitcoinService {
                  "m/84'/0'/0'/0/0"; // Native SegWit
     
     const child = hdkey.derive(path);
-    const keyPair = bitcoin.ECPair.fromPrivateKey(child.privateKey!, { network: this.network });
+    const keyPair = ECPair.fromPrivateKey(child.privateKey!, { network: this.network });
     
     let address: string;
     
@@ -120,7 +120,7 @@ export class BitcoinService {
     feeRate?: number
   ): Promise<string> {
     try {
-      const keyPair = bitcoin.ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), { network: this.network });
+      const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), { network: this.network });
       
       // Determine address type from private key
       const p2wpkh = bitcoin.payments.p2wpkh({ 
