@@ -1,11 +1,14 @@
+// next.config.js
 const isProd = process.env.NODE_ENV === 'production';
+const isVercel = process.env.VERCEL === '1';
 
-const withPWA = require('next-pwa')({
+// Conditional PWA loading only for non-Vercel production builds
+const withPWA = !isVercel && isProd ? require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: !isProd,
-  runtimeCaching: isProd ? [
+  disable: false,
+  runtimeCaching: [
     {
       urlPattern: /^https:\/\/api\.coingecko\.com\/.*/,
       handler: 'CacheFirst',
@@ -13,38 +16,35 @@ const withPWA = require('next-pwa')({
         cacheName: 'coingecko-cache',
         expiration: {
           maxEntries: 100,
-          maxAgeSeconds: 60 * 5, // 5 minutes
+          maxAgeSeconds: 60 * 5,
         },
       },
     },
-    {
-      urlPattern: /^https:\/\/.*\.infura\.io\/.*/,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'rpc-cache',
-        networkTimeoutSeconds: 5,
-      },
-    },
-  ] : [],
-});
+  ],
+}) : (config) => config;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Force static generation for Vercel
+  output: isVercel ? 'standalone' : undefined,
   images: {
     domains: [
       'assets.coingecko.com',
-      'logos.covalenthq.com',
+      'logos.covalenthq.com', 
       'raw.githubusercontent.com',
       'cryptologos.cc',
     ],
+    // Add unoptimized for crypto logos that might fail
+    unoptimized: isVercel,
   },
   experimental: {
-    serverActions: true,
+    // Remove serverActions for better Vercel compatibility
+    serverComponentsExternalPackages: ['bitcoinjs-lib', 'tiny-secp256k1'],
   },
-  webpack: (config, { isServer }) => {
-    // Fixes npm packages that depend on `fs` module
+  webpack: (config, { isServer, dev }) => {
+    // Vercel-specific webpack configuration
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -52,8 +52,27 @@ const nextConfig = {
         net: false,
         tls: false,
         crypto: false,
+        stream: false,
+        util: false,
+        buffer: false,
+        path: false,
+      };
+      
+      // Add buffer polyfill for crypto libraries
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        buffer: 'buffer',
       };
     }
+
+    // Reduce bundle size in production
+    if (!dev && isProd) {
+      config.optimization = {
+        ...config.optimization,
+        sideEffects: false,
+      };
+    }
+
     return config;
   },
   async headers() {
@@ -66,7 +85,7 @@ const nextConfig = {
             value: 'nosniff',
           },
           {
-            key: 'X-Frame-Options',
+            key: 'X-Frame-Options', 
             value: 'DENY',
           },
           {
@@ -100,6 +119,20 @@ const nextConfig = {
           },
         ],
       },
+      // Ensure manifest.json is properly served
+      {
+        source: '/manifest.json',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/json',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
     ];
   },
   async rewrites() {
@@ -112,4 +145,4 @@ const nextConfig = {
   },
 };
 
-module.exports = isProd ? withPWA(nextConfig) : nextConfig;
+module.exports = withPWA(nextConfig);
