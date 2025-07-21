@@ -3,9 +3,15 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "regions": ["iad1"],
+  "framework": "nextjs",
   "functions": {
     "app/api/coingecko/[...path]/route.ts": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "memory": 1024
+    },
+    "app/api/health/route.ts": {
+      "maxDuration": 5,
+      "memory": 512
     }
   },
   "headers": [
@@ -39,15 +45,15 @@
       ]
     },
     {
-      "source": "/sw.js",
+      "source": "/manifest.json",
       "headers": [
         {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
+          "key": "Content-Type",
+          "value": "application/json"
         },
         {
-          "key": "Service-Worker-Allowed",
-          "value": "/"
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
         }
       ]
     }
@@ -57,5 +63,7 @@
       "source": "/api/coingecko/:path*",
       "destination": "/api/coingecko/:path*"
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }
