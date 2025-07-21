@@ -1,9 +1,11 @@
+const isProd = process.env.NODE_ENV === 'production';
+
 const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
-  runtimeCaching: [
+  disable: !isProd,
+  runtimeCaching: isProd ? [
     {
       urlPattern: /^https:\/\/api\.coingecko\.com\/.*/,
       handler: 'CacheFirst',
@@ -23,7 +25,7 @@ const withPWA = require('next-pwa')({
         networkTimeoutSeconds: 5,
       },
     },
-  ],
+  ] : [],
 });
 
 /** @type {import('next').NextConfig} */
@@ -110,4 +112,4 @@ const nextConfig = {
   },
 };
 
-module.exports = withPWA(nextConfig);
+module.exports = isProd ? withPWA(nextConfig) : nextConfig;
