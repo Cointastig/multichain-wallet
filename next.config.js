@@ -1,34 +1,8 @@
-// next.config.js
-const isProd = process.env.NODE_ENV === 'production';
-const isVercel = process.env.VERCEL === '1';
-
-// Conditional PWA loading only for non-Vercel production builds
-const withPWA = !isVercel && isProd ? require('next-pwa')({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: false,
-  runtimeCaching: [
-    {
-      urlPattern: /^https:\/\/api\.coingecko\.com\/.*/,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'coingecko-cache',
-        expiration: {
-          maxEntries: 100,
-          maxAgeSeconds: 60 * 5,
-        },
-      },
-    },
-  ],
-}) : (config) => config;
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  // Force static generation for Vercel
-  output: isVercel ? 'standalone' : undefined,
+  output: 'standalone',
   images: {
     domains: [
       'assets.coingecko.com',
@@ -36,15 +10,12 @@ const nextConfig = {
       'raw.githubusercontent.com',
       'cryptologos.cc',
     ],
-    // Add unoptimized for crypto logos that might fail
-    unoptimized: isVercel,
+    unoptimized: true,
   },
   experimental: {
-    // Remove serverActions for better Vercel compatibility
-    serverComponentsExternalPackages: ['bitcoinjs-lib', 'tiny-secp256k1'],
+    serverComponentsExternalPackages: ['bip39', 'hdkey'],
   },
-  webpack: (config, { isServer, dev }) => {
-    // Vercel-specific webpack configuration
+  webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -54,25 +25,10 @@ const nextConfig = {
         crypto: false,
         stream: false,
         util: false,
-        buffer: false,
         path: false,
-      };
-      
-      // Add buffer polyfill for crypto libraries
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        buffer: 'buffer',
+        buffer: false,
       };
     }
-
-    // Reduce bundle size in production
-    if (!dev && isProd) {
-      config.optimization = {
-        ...config.optimization,
-        sideEffects: false,
-      };
-    }
-
     return config;
   },
   async headers() {
@@ -119,7 +75,6 @@ const nextConfig = {
           },
         ],
       },
-      // Ensure manifest.json is properly served
       {
         source: '/manifest.json',
         headers: [
@@ -145,4 +100,4 @@ const nextConfig = {
   },
 };
 
-module.exports = withPWA(nextConfig);
+module.exports = nextConfig;
