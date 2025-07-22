@@ -2,9 +2,10 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
 import * as ecc from 'tiny-secp256k1';
+import ECPairFactory from 'ecpair';
 
-// Create ECPair factory
-const ECPair = bitcoin.ECPairFactory(ecc);
+// Create ECPair factory with the ECC library
+const ECPair = ECPairFactory(ecc);
 
 export interface BitcoinWallet {
   address: string;
