@@ -32,9 +32,30 @@ import { ReceiveModal } from '@/components/receive-modal';
 import { SwapModal } from '@/components/swap-modal';
 import { AddTokenModal } from '@/components/add-token-modal';
 import { ChainSelector } from '@/components/chain-selector';
-import { WalletMenu } from '@/components/wallet-menu';
 import { MarketOverview } from '@/components/market-overview';
 import { formatCurrency, formatAddress, cn } from '@/lib/utils';
+
+// Inline WalletMenu component
+function WalletMenu() {
+  const { wallets, activeWallet, switchWallet } = useWalletStore();
+  const [open, setOpen] = useState(false);
+
+  if (!activeWallet) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 bg-muted/50 rounded-lg">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-sm font-semibold">
+        {activeWallet.name.slice(0, 2).toUpperCase()}
+      </div>
+      <div className="text-left">
+        <p className="font-medium text-sm">{activeWallet.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {activeWallet.address.slice(0, 6)}...{activeWallet.address.slice(-4)}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function WalletDashboard() {
   const { 
