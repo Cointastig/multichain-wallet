@@ -13,21 +13,30 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['bip39', 'hdkey'],
+    serverComponentsExternalPackages: ['bip39', 'hdkey', 'bitcoinjs-lib', '@solana/web3.js'],
   },
   webpack: (config, { isServer }) => {
+    // Provide polyfills for node modules in the browser
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         net: false,
         tls: false,
-        crypto: false,
-        stream: false,
-        util: false,
-        path: false,
-        buffer: false,
+        crypto: require.resolve('crypto-browserify'),
+        stream: require.resolve('stream-browserify'),
+        util: require.resolve('util/'),
+        path: require.resolve('path-browserify'),
+        buffer: require.resolve('buffer/'),
       };
+
+      // Provide Buffer polyfill
+      config.plugins.push(
+        new require('webpack').ProvidePlugin({
+          Buffer: ['buffer', 'Buffer'],
+          process: 'process/browser',
+        })
+      );
     }
     return config;
   },
