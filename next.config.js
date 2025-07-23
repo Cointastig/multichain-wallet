@@ -15,7 +15,18 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['bip39', 'hdkey', 'bitcoinjs-lib', '@solana/web3.js'],
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, webpack }) => {
+    // Enable WebAssembly
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    };
+    
+    // Add rule for WebAssembly modules
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'webassembly/async',
+    });
     // Provide polyfills for node modules in the browser
     if (!isServer) {
       config.resolve.fallback = {
@@ -30,9 +41,9 @@ const nextConfig = {
         buffer: require.resolve('buffer/'),
       };
 
-      // Provide Buffer polyfill
+      // Provide Buffer polyfill using the webpack instance from Next.js
       config.plugins.push(
-        new require('webpack').ProvidePlugin({
+        new webpack.ProvidePlugin({
           Buffer: ['buffer', 'Buffer'],
           process: 'process/browser',
         })
