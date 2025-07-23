@@ -35,7 +35,10 @@ const importBitcoinService = async () => {
   }
 };
 
-type WalletStore = WalletState & WalletActions;
+type WalletStore = WalletState & WalletActions & {
+  lastMarketUpdate: number;
+  isUpdatingMarket: boolean;
+};
 
 export const useWalletStore = create<WalletStore>()(
   persist(
@@ -51,6 +54,8 @@ export const useWalletStore = create<WalletStore>()(
       isLocked: true,
       isConnected: false,
       totalBalance: 0,
+      lastMarketUpdate: 0,
+      isUpdatingMarket: false,
       settings: {
         currency: 'USD',
         language: 'en',
@@ -352,8 +357,23 @@ export const useWalletStore = create<WalletStore>()(
         throw new Error('Swap functionality not yet implemented');
       },
 
-      // Market data
+      // Market data with rate limiting
       updateMarketData: async () => {
+        const { lastMarketUpdate, isUpdatingMarket } = get();
+        const now = Date.now();
+        const UPDATE_INTERVAL = 60000; // 1 minute minimum between updates
+
+        // Prevent concurrent updates and respect rate limit
+        if (isUpdatingMarket || (now - lastMarketUpdate) < UPDATE_INTERVAL) {
+          console.log('Skipping market update - too soon or already updating');
+          return;
+        }
+
+        set(state => {
+          state.isUpdatingMarket = true;
+          state.lastMarketUpdate = now;
+        });
+
         try {
           const response = await fetch('/api/coingecko/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=true');
           if (!response.ok) {
@@ -378,6 +398,10 @@ export const useWalletStore = create<WalletStore>()(
           });
         } catch (error) {
           console.warn('Failed to update market data:', error);
+        } finally {
+          set(state => {
+            state.isUpdatingMarket = false;
+          });
         }
       },
 
@@ -406,6 +430,7 @@ export const useWalletStore = create<WalletStore>()(
       partialize: (state) => ({
         wallets: state.wallets,
         settings: state.settings,
+        lastMarketUpdate: state.lastMarketUpdate,
       }),
       version: 1,
     }
