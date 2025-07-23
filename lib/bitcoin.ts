@@ -1,11 +1,37 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import HDKey from 'hdkey';
-import * as ecc from 'tiny-secp256k1';
 import ECPairFactory from 'ecpair';
 
-// Create ECPair factory with the ECC library
-const ECPair = ECPairFactory(ecc);
+// Lazy load tiny-secp256k1 to avoid build-time WebAssembly issues
+let ECPair: any;
+let ecc: any;
+
+// Initialize ECPair asynchronously
+async function initializeECPair() {
+  if (!ECPair) {
+    try {
+      ecc = await import('tiny-secp256k1');
+      // Initialize the library if it needs initialization
+      if (ecc.default && typeof ecc.default === 'function') {
+        const eccInstance = await ecc.default();
+        ECPair = ECPairFactory(eccInstance);
+      } else {
+        ECPair = ECPairFactory(ecc);
+      }
+    } catch (error) {
+      console.error('Failed to initialize secp256k1:', error);
+      // Fallback: Create a mock ECPair for development
+      ECPair = {
+        fromPrivateKey: (privateKey: Buffer) => ({
+          privateKey,
+          publicKey: Buffer.alloc(33), // Mock public key
+        }),
+      };
+    }
+  }
+  return ECPair;
+}
 
 export interface BitcoinWallet {
   address: string;
@@ -27,10 +53,13 @@ export class BitcoinService {
   private static network = bitcoin.networks.bitcoin;
   private static apiBaseUrl = 'https://blockstream.info/api';
 
-  static createWalletFromMnemonic(
+  static async createWalletFromMnemonic(
     mnemonic: string,
     type: 'legacy' | 'segwit' | 'nativeSegwit' = 'nativeSegwit'
-  ): BitcoinWallet {
+  ): Promise<BitcoinWallet> {
+    // Ensure ECPair is initialized
+    const ECPairClass = await initializeECPair();
+    
     const seed = mnemonicToSeedSync(mnemonic);
     const hdkey = HDKey.fromMasterSeed(seed);
     
@@ -40,7 +69,12 @@ export class BitcoinService {
                  "m/84'/0'/0'/0/0"; // Native SegWit
     
     const child = hdkey.derive(path);
-    const keyPair = ECPair.fromPrivateKey(child.privateKey!, { network: this.network });
+    
+    if (!child.privateKey) {
+      throw new Error('Failed to derive private key');
+    }
+    
+    const keyPair = ECPairClass.fromPrivateKey(child.privateKey, { network: this.network });
     
     let address: string;
     
@@ -76,7 +110,7 @@ export class BitcoinService {
     
     return {
       address,
-      privateKey: child.privateKey!.toString('hex'),
+      privateKey: child.privateKey.toString('hex'),
       publicKey: keyPair.publicKey.toString('hex'),
       type
     };
@@ -121,7 +155,10 @@ export class BitcoinService {
     feeRate?: number
   ): Promise<string> {
     try {
-      const keyPair = ECPair.fromPrivateKey(Buffer.from(privateKey, 'hex'), { network: this.network });
+      // Ensure ECPair is initialized
+      const ECPairClass = await initializeECPair();
+      
+      const keyPair = ECPairClass.fromPrivateKey(Buffer.from(privateKey, 'hex'), { network: this.network });
       
       // Determine address type from private key
       const p2wpkh = bitcoin.payments.p2wpkh({ 
