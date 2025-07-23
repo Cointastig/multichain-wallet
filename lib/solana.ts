@@ -1,112 +1,272 @@
-{
-  "name": "multichain-wallet",
-  "version": "1.0.0",
-  "description": "Secure, feature-rich multi-chain cryptocurrency wallet supporting Ethereum, Bitcoin, Solana, and more.",
-  "private": true,
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint --fix",
-    "type-check": "tsc --noEmit",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "vercel-build": "next build",
-    "postinstall": "node scripts/create-placeholder-icons.js"
-  },
-  "dependencies": {
-    "@radix-ui/react-accordion": "^1.1.2",
-    "@radix-ui/react-alert-dialog": "^1.0.5",
-    "@radix-ui/react-aspect-ratio": "^1.0.3",
-    "@radix-ui/react-avatar": "^1.0.4",
-    "@radix-ui/react-checkbox": "^1.0.4",
-    "@radix-ui/react-collapsible": "^1.0.3",
-    "@radix-ui/react-context-menu": "^2.1.5",
-    "@radix-ui/react-dialog": "^1.0.5",
-    "@radix-ui/react-dropdown-menu": "^2.0.6",
-    "@radix-ui/react-hover-card": "^1.0.7",
-    "@radix-ui/react-label": "^2.0.2",
-    "@radix-ui/react-menubar": "^1.0.4",
-    "@radix-ui/react-navigation-menu": "^1.1.4",
-    "@radix-ui/react-popover": "^1.0.7",
-    "@radix-ui/react-progress": "^1.0.3",
-    "@radix-ui/react-radio-group": "^1.1.3",
-    "@radix-ui/react-scroll-area": "^1.0.5",
-    "@radix-ui/react-select": "^2.0.0",
-    "@radix-ui/react-separator": "^1.0.3",
-    "@radix-ui/react-slider": "^1.1.2",
-    "@radix-ui/react-slot": "^1.0.2",
-    "@radix-ui/react-switch": "^1.0.3",
-    "@radix-ui/react-tabs": "^1.0.4",
-    "@radix-ui/react-toast": "^1.1.5",
-    "@radix-ui/react-toggle": "^1.0.3",
-    "@radix-ui/react-toggle-group": "^1.0.4",
-    "@radix-ui/react-tooltip": "^1.0.7",
-    "@solana/spl-token": "^0.3.9", 
-    "@solana/web3.js": "^1.87.6",
-    "bip39": "^3.1.0",
-    "bitcoinjs-lib": "^6.1.5",
-    "buffer": "^6.0.3",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "crypto-browserify": "^3.12.0",
-    "ecpair": "^2.1.0",
-    "ed25519-hd-key": "^1.3.0",
-    "ethers": "^6.9.2",
-    "hdkey": "^2.1.0",
-    "immer": "^10.0.3",
-    "lucide-react": "^0.303.0",
-    "next": "^14.2.30",
-    "next-themes": "^0.2.1",
-    "path-browserify": "^1.0.1",
-    "process": "^0.11.10",
-    "qrcode": "^1.5.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "stream-browserify": "^3.0.0",
-    "swr": "^2.2.4",
-    "tailwind-merge": "^2.2.0",
-    "tailwindcss-animate": "^1.0.7",
-    "tiny-secp256k1": "^2.2.3",
-    "tweetnacl": "^1.0.3",
-    "util": "^0.12.5",
-    "zustand": "^4.4.7"
-  },
-  "devDependencies": {
-    "@tailwindcss/forms": "^0.5.7",
-    "@tailwindcss/typography": "^0.5.10",
-    "@testing-library/jest-dom": "^6.1.6",
-    "@testing-library/react": "^14.1.2",
-    "@types/hdkey": "^2.0.3",
-    "@types/node": "^20.10.6",
-    "@types/qrcode": "^1.5.5",
-    "@types/react": "^18.2.46",
-    "@types/react-dom": "^18.2.18",
-    "@typescript-eslint/eslint-plugin": "^6.17.0",
-    "@typescript-eslint/parser": "^6.17.0",
-    "autoprefixer": "^10.4.16",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "14.0.4",
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^5.3.3"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+import { 
+  Connection, 
+  PublicKey, 
+  Transaction, 
+  SystemProgram, 
+  LAMPORTS_PER_SOL,
+  sendAndConfirmTransaction,
+  Keypair,
+  TransactionInstruction,
+  ParsedAccountData
+} from '@solana/web3.js';
+import { 
+  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID,
+  getAccount,
+  getMint,
+  createTransferInstruction
+} from '@solana/spl-token';
+import { mnemonicToSeedSync } from 'bip39';
+import HDKey from 'hdkey';
+import * as ed25519 from 'ed25519-hd-key';
+import * as nacl from 'tweetnacl';
+
+export class SolanaService {
+  private static connection = new Connection(
+    process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com',
+    'confirmed'
+  );
+
+  static async createWalletFromMnemonic(mnemonic: string): Promise<{ publicKey: string; privateKey: string }> {
+    const seed = mnemonicToSeedSync(mnemonic);
+    const derivationPath = "m/44'/501'/0'/0'";
+    const derivedSeed = ed25519.derivePath(derivationPath, seed.toString('hex')).key;
+    const keypair = Keypair.fromSeed(derivedSeed);
+    
+    return {
+      publicKey: keypair.publicKey.toString(),
+      privateKey: Buffer.from(keypair.secretKey).toString('hex'),
+    };
+  }
+
+  static async getBalance(address: string): Promise<string> {
+    try {
+      const publicKey = new PublicKey(address);
+      const balance = await this.connection.getBalance(publicKey);
+      return (balance / LAMPORTS_PER_SOL).toString();
+    } catch (error) {
+      console.error('Error getting Solana balance:', error);
+      return '0';
+    }
+  }
+
+  static async getTokenBalance(address: string, tokenMint: string): Promise<string> {
+    try {
+      const publicKey = new PublicKey(address);
+      const tokenMintKey = new PublicKey(tokenMint);
+      
+      const tokenAccount = await getAssociatedTokenAddress(tokenMintKey, publicKey);
+      
+      try {
+        const account = await getAccount(this.connection, tokenAccount);
+        const mint = await getMint(this.connection, tokenMintKey);
+        const balance = Number(account.amount) / Math.pow(10, mint.decimals);
+        return balance.toString();
+      } catch (error) {
+        // Token account doesn't exist, balance is 0
+        return '0';
+      }
+    } catch (error) {
+      console.error('Error getting Solana token balance:', error);
+      return '0';
+    }
+  }
+
+  static async getTokenInfo(tokenMint: string): Promise<{
+    name: string;
+    symbol: string;
+    decimals: number;
+  } | null> {
+    try {
+      const tokenMintKey = new PublicKey(tokenMint);
+      const mint = await getMint(this.connection, tokenMintKey);
+      
+      // Get token metadata (would need Metaplex SDK for full metadata)
+      // For now, return basic info
+      return {
+        name: 'Unknown Token',
+        symbol: 'UNK',
+        decimals: mint.decimals,
+      };
+    } catch (error) {
+      console.error('Error getting Solana token info:', error);
+      return null;
+    }
+  }
+
+  static async sendTransaction(
+    privateKey: string,
+    to: string,
+    amount: string,
+    tokenMint?: string
+  ): Promise<string> {
+    try {
+      const fromKeypair = Keypair.fromSecretKey(
+        Buffer.from(privateKey, 'hex')
+      );
+      const toPubkey = new PublicKey(to);
+      
+      const transaction = new Transaction();
+      
+      if (tokenMint) {
+        // SPL Token transfer
+        const tokenMintKey = new PublicKey(tokenMint);
+        const mint = await getMint(this.connection, tokenMintKey);
+        
+        const fromTokenAccount = await getAssociatedTokenAddress(
+          tokenMintKey,
+          fromKeypair.publicKey
+        );
+        
+        const toTokenAccount = await getAssociatedTokenAddress(
+          tokenMintKey,
+          toPubkey
+        );
+        
+        const transferAmount = parseFloat(amount) * Math.pow(10, mint.decimals);
+        
+        transaction.add(
+          createTransferInstruction(
+            fromTokenAccount,
+            toTokenAccount,
+            fromKeypair.publicKey,
+            transferAmount
+          )
+        );
+      } else {
+        // SOL transfer
+        const lamports = parseFloat(amount) * LAMPORTS_PER_SOL;
+        
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: fromKeypair.publicKey,
+            toPubkey: toPubkey,
+            lamports,
+          })
+        );
+      }
+      
+      const { blockhash } = await this.connection.getRecentBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = fromKeypair.publicKey;
+      
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [fromKeypair]
+      );
+      
+      return signature;
+    } catch (error) {
+      console.error('Error sending Solana transaction:', error);
+      throw error;
+    }
+  }
+
+  static async estimateGas(to: string, amount: string, tokenMint?: string): Promise<string> {
+    try {
+      // Solana has fixed fees, but we can estimate based on transaction size
+      const recentBlockhash = await this.connection.getRecentBlockhash();
+      const fee = recentBlockhash.feeCalculator.lamportsPerSignature;
+      
+      // Convert to SOL
+      return (fee / LAMPORTS_PER_SOL).toString();
+    } catch (error) {
+      console.error('Error estimating Solana gas:', error);
+      return '0.000005'; // Default 5000 lamports
+    }
+  }
+
+  static async signMessage(privateKey: string, message: string): Promise<string> {
+    try {
+      const keypair = Keypair.fromSecretKey(
+        Buffer.from(privateKey, 'hex')
+      );
+      
+      const messageBytes = new TextEncoder().encode(message);
+      const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
+      
+      return Buffer.from(signature).toString('hex');
+    } catch (error) {
+      console.error('Error signing Solana message:', error);
+      throw error;
+    }
+  }
+
+  static async getTransactionHistory(address: string, limit = 20): Promise<any[]> {
+    try {
+      const publicKey = new PublicKey(address);
+      const signatures = await this.connection.getSignaturesForAddress(
+        publicKey,
+        { limit }
+      );
+      
+      const transactions = await Promise.all(
+        signatures.map(async (sig) => {
+          const tx = await this.connection.getTransaction(sig.signature, {
+            maxSupportedTransactionVersion: 0
+          });
+          return {
+            signature: sig.signature,
+            slot: sig.slot,
+            timestamp: sig.blockTime,
+            transaction: tx,
+          };
+        })
+      );
+      
+      return transactions;
+    } catch (error) {
+      console.error('Error getting Solana transaction history:', error);
+      return [];
+    }
+  }
+
+  static async getTokenAccounts(address: string): Promise<any[]> {
+    try {
+      const publicKey = new PublicKey(address);
+      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        { programId: TOKEN_PROGRAM_ID }
+      );
+      
+      return tokenAccounts.value.map(accountInfo => {
+        const parsedInfo = (accountInfo.account.data as ParsedAccountData).parsed.info;
+        return {
+          mint: parsedInfo.mint,
+          amount: parsedInfo.tokenAmount.amount,
+          decimals: parsedInfo.tokenAmount.decimals,
+          uiAmount: parsedInfo.tokenAmount.uiAmount,
+        };
+      });
+    } catch (error) {
+      console.error('Error getting Solana token accounts:', error);
+      return [];
+    }
+  }
+
+  static async airdropSol(address: string, amount: number): Promise<string> {
+    try {
+      // Only works on devnet/testnet
+      if (!this.connection.rpcEndpoint.includes('devnet') && 
+          !this.connection.rpcEndpoint.includes('testnet')) {
+        throw new Error('Airdrop only available on devnet/testnet');
+      }
+      
+      const publicKey = new PublicKey(address);
+      const signature = await this.connection.requestAirdrop(
+        publicKey,
+        amount * LAMPORTS_PER_SOL
+      );
+      
+      await this.connection.confirmTransaction(signature);
+      return signature;
+    } catch (error) {
+      console.error('Error airdropping SOL:', error);
+      throw error;
+    }
   }
 }
+
+// Re-export for backward compatibility
+export default SolanaService;
