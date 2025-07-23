@@ -13,13 +13,15 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
-    serverComponentsExternalPackages: ['bip39', 'hdkey', 'bitcoinjs-lib', '@solana/web3.js'],
+    serverComponentsExternalPackages: ['bip39', 'hdkey', 'bitcoinjs-lib', '@solana/web3.js', 'tiny-secp256k1'],
   },
   webpack: (config, { isServer, webpack }) => {
     // Enable WebAssembly
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
+      layers: true,
+      topLevelAwait: true, // Enable top-level await for WebAssembly
     };
     
     // Add rule for WebAssembly modules
@@ -27,6 +29,7 @@ const nextConfig = {
       test: /\.wasm$/,
       type: 'webassembly/async',
     });
+    
     // Provide polyfills for node modules in the browser
     if (!isServer) {
       config.resolve.fallback = {
@@ -49,7 +52,21 @@ const nextConfig = {
         })
       );
     }
+    
+    // Ensure proper handling of ES modules
+    config.module.rules.push({
+      test: /\.m?js$/,
+      resolve: {
+        fullySpecified: false,
+      },
+    });
+    
     return config;
+  },
+  // Set compilation target for better compatibility
+  env: {
+    // Ensure browser environment has async/await support
+    BROWSER_TARGET: 'es2017',
   },
   async headers() {
     return [
