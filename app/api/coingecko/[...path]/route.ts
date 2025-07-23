@@ -1,31 +1,45 @@
-+190
--0
-
 import { NextRequest, NextResponse } from 'next/server';
+import Bottleneck from 'bottleneck';
 
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
-const RATE_LIMIT = 50; // requests per minute
-const requestCounts = new Map<string, { count: number; resetTime: number }>();
 
-function getRateLimitKey(request: NextRequest): string {
-  // Use IP address for rate limiting
+// Create a limiter instance - 30 requests per minute for Demo tier
+const limiter = new Bottleneck({
+  minTime: 2000, // Minimum 2 seconds between requests
+  maxConcurrent: 1, // One request at a time
+  reservoir: 30, // 30 requests available
+  reservoirRefreshAmount: 30, // Refill to 30 requests
+  reservoirRefreshInterval: 60 * 1000, // Every 60 seconds
+  retryCondition: (error: any) => {
+    // Retry on rate limit or server errors
+    return error?.response?.status === 429 || 
+           (error?.response?.status >= 500 && error?.response?.status < 600);
+  },
+  strategy: Bottleneck.strategy.OVERFLOW_PRIORITY
+});
+
+// Track per-IP rate limits
+const ipRateLimits = new Map<string, { count: number; resetTime: number }>();
+
+function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
-  const ip = forwarded ? forwarded.split(',')[0] : 
+  const ip = forwarded ? forwarded.split(',')[0].trim() : 
              request.headers.get('x-real-ip') || 
+             request.headers.get('cf-connecting-ip') ||
              'unknown';
   return ip;
 }
 
-function isRateLimited(key: string): boolean {
+function isIpRateLimited(ip: string, limit = 20): boolean {
   const now = Date.now();
-  const userRequest = requestCounts.get(key);
+  const userRequest = ipRateLimits.get(ip);
   
   if (!userRequest || now > userRequest.resetTime) {
-    requestCounts.set(key, { count: 1, resetTime: now + 60000 }); // 1 minute
+    ipRateLimits.set(ip, { count: 1, resetTime: now + 60000 });
     return false;
   }
   
-  if (userRequest.count >= RATE_LIMIT) {
+  if (userRequest.count >= limit) {
     return true;
   }
   
@@ -33,7 +47,57 @@ function isRateLimited(key: string): boolean {
   return false;
 }
 
+// Exponential backoff with jitter
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 5,
+  initialDelay = 1000
+): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Don't retry on client errors (except rate limit)
+      if (error.response?.status >= 400 && error.response?.status < 500 && error.response?.status !== 429) {
+        throw error;
+      }
+      
+      if (attempt < maxRetries - 1) {
+        // Calculate delay with exponential backoff and jitter
+        const baseDelay = Math.min(initialDelay * Math.pow(2, attempt), 30000);
+        const jitter = Math.random() * 1000;
+        const delay = baseDelay + jitter;
+        
+        // If we got a Retry-After header, use that instead
+        const retryAfter = error.response?.headers?.['retry-after'];
+        const finalDelay = retryAfter ? parseInt(retryAfter) * 1000 : delay;
+        
+        console.log(`[CoinGecko Proxy] Retrying after ${finalDelay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, finalDelay));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
+// Clean up old rate limit entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of ipRateLimits.entries()) {
+    if (now > data.resetTime + 300000) { // 5 minutes after reset
+      ipRateLimits.delete(ip);
+    }
+  }
+}, 300000); // Every 5 minutes
+
 export async function GET(request: NextRequest) {
+  const clientIp = getClientIp(request);
+  
   try {
     // Enable CORS
     const corsHeaders = {
@@ -42,12 +106,15 @@ export async function GET(request: NextRequest) {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
 
-    // Rate limiting
-    const rateLimitKey = getRateLimitKey(request);
-    if (isRateLimited(rateLimitKey)) {
+    // Check IP rate limiting
+    if (isIpRateLimited(clientIp)) {
+      console.warn(`[CoinGecko Proxy] Rate limit exceeded for IP: ${clientIp}`);
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
-        { status: 429, headers: corsHeaders }
+        { 
+          error: 'Rate limit exceeded',
+          message: 'Too many requests from your IP. Please try again later.'
+        },
+        { status: 429, headers: { ...corsHeaders, 'Retry-After': '60' } }
       );
     }
 
@@ -82,10 +149,13 @@ export async function GET(request: NextRequest) {
       'coins/avalanche-2',
       'coins/matic-network',
       'coins/fantom',
+      'trending',
+      'exchange_rates',
     ];
 
     const isAllowed = allowedEndpoints.some(allowed => endpoint.startsWith(allowed));
     if (!isAllowed) {
+      console.warn(`[CoinGecko Proxy] Blocked endpoint: ${endpoint}`);
       return NextResponse.json(
         { error: 'Endpoint not allowed' },
         { status: 403, headers: corsHeaders }
@@ -95,60 +165,56 @@ export async function GET(request: NextRequest) {
     // Build the CoinGecko URL
     const coingeckoUrl = `${COINGECKO_BASE_URL}/${endpoint}${searchParams ? `?${searchParams}` : ''}`;
     
-    console.log(`[CoinGecko Proxy] Fetching: ${coingeckoUrl}`);
+    console.log(`[CoinGecko Proxy] Fetching: ${coingeckoUrl} for IP: ${clientIp}`);
 
-    // Prepare headers for CoinGecko request
-    const headers: HeadersInit = {
-      'Accept': 'application/json',
-      'User-Agent': 'MultiChain-Wallet/1.0.0',
-    };
+    // Execute request with rate limiting and retry logic
+    const response = await limiter.schedule(() => 
+      retryWithBackoff(async () => {
+        // Prepare headers for CoinGecko request
+        const headers: HeadersInit = {
+          'Accept': 'application/json',
+          'User-Agent': 'MultiChain-Wallet/1.0.0',
+        };
 
-    // Add API key if available
-    const apiKey = process.env.COINGECKO_API_KEY;
-    if (apiKey) {
-      headers['X-Cg-Pro-Api-Key'] = apiKey;
-    }
+        // Add API key if available
+        const apiKey = process.env.COINGECKO_API_KEY;
+        if (apiKey) {
+          headers['X-Cg-Pro-Api-Key'] = apiKey;
+        }
 
-    // Make the request to CoinGecko
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-    const response = await fetch(coingeckoUrl, {
-      headers,
-      signal: controller.signal,
-      next: { revalidate: 60 }, // Cache for 1 minute
-    });
+        try {
+          const res = await fetch(coingeckoUrl, {
+            headers,
+            signal: controller.signal,
+            next: { revalidate: 60 }, // Cache for 1 minute
+          });
 
-    clearTimeout(timeoutId);
+          clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      console.error(`[CoinGecko Proxy] Error: ${response.status} ${response.statusText}`);
-      
-      if (response.status === 429) {
-        return NextResponse.json(
-          { 
-            error: 'CoinGecko rate limit exceeded',
-            retryAfter: response.headers.get('Retry-After') || '60'
-          },
-          { 
-            status: 429, 
-            headers: {
-              ...corsHeaders,
-              'Retry-After': response.headers.get('Retry-After') || '60'
-            }
+          if (!res.ok) {
+            const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
+            (error as any).response = {
+              status: res.status,
+              headers: Object.fromEntries(res.headers.entries())
+            };
+            throw error;
           }
-        );
-      }
 
-      return NextResponse.json(
-        { 
-          error: 'CoinGecko API error',
-          status: response.status,
-          message: response.statusText
-        },
-        { status: response.status, headers: corsHeaders }
-      );
-    }
+          return res;
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            const timeoutError = new Error('Request timeout');
+            (timeoutError as any).response = { status: 504 };
+            throw timeoutError;
+          }
+          throw error;
+        }
+      })
+    );
 
     const data = await response.json();
     
@@ -157,26 +223,54 @@ export async function GET(request: NextRequest) {
       ...corsHeaders,
       'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       'Content-Type': 'application/json',
+      'X-RateLimit-Limit': '30',
+      'X-RateLimit-Remaining': limiter.reservoir?.toString() || '0',
     };
 
     return NextResponse.json(data, { headers: responseHeaders });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[CoinGecko Proxy] Error:', error);
     
-    if (error instanceof Error && error.name === 'AbortError') {
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+    
+    if (error.response?.status === 429) {
       return NextResponse.json(
-        { error: 'Request timeout' },
-        { status: 504 }
+        { 
+          error: 'CoinGecko rate limit exceeded',
+          message: 'The API rate limit has been exceeded. Please try again later.',
+          retryAfter: error.response.headers['retry-after'] || '60'
+        },
+        { 
+          status: 429, 
+          headers: {
+            ...corsHeaders,
+            'Retry-After': error.response.headers['retry-after'] || '60'
+          }
+        }
+      );
+    }
+    
+    if (error.response?.status === 504 || error.message === 'Request timeout') {
+      return NextResponse.json(
+        { 
+          error: 'Request timeout',
+          message: 'The request took too long to complete.'
+        },
+        { status: 504, headers: corsHeaders }
       );
     }
 
     return NextResponse.json(
       { 
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error?.toString() : 'An error occurred'
+        message: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred while fetching data'
       },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -188,6 +282,7 @@ export async function OPTIONS(request: NextRequest) {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
     },
   });
 }
